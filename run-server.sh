@@ -6,7 +6,7 @@ RUN_NR=$(ls .exp-count | wc -w)
 echo "RUN_NR=$RUN_NR"
 #echo $(($RUN_NR - 1))
 
-python server.py --group_name="run-$RUN_NR"
+python server.py --group_name="run-$RUN_NR" --num_rounds=2
 
 touch .exp-count/run-$RUN_NR
 
