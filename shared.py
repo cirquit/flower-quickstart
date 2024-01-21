@@ -50,7 +50,7 @@ def get_cifar10_dataloader(
         partition = fds.load_full("test")
     
     pytorch_transforms = Compose(
-        [ToTensor(), Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
+        [ToTensor(), Normalize((0.49139968,0.48215827,0.44653124), (0.24703233,0.24348505,0.26158768))]
     )
 
     def apply_transforms(batch):

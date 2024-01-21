@@ -18,11 +18,12 @@ import shared
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
-def train(model, trainloader, epochs):
+def train(model, trainloader, epochs, lr_factor):
     """Train the model on the training set."""
     device = shared.get_device()
+    lr = 0.001 * lr_factor
     criterion = torch.nn.CrossEntropyLoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
+    optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9)
     epoch_loss = 0
     for _ in range(epochs):
         for batch in tqdm(trainloader, "Training"):
@@ -34,7 +35,11 @@ def train(model, trainloader, epochs):
             loss.backward()
             optimizer.step()
 
-        wandb.log({"epoch_loss": epoch_loss / len(trainloader.dataset)})
+        wandb.log({
+            "epoch_loss": epoch_loss / len(trainloader.dataset),
+            "lr": lr
+        })
+
         epoch_loss = 0
 
 class FlowerClient(fl.client.NumPyClient):
@@ -54,7 +59,7 @@ class FlowerClient(fl.client.NumPyClient):
 
     def fit(self, parameters, config):
         self.set_parameters(parameters)
-        train(self.model, self.trainloader, epochs=1)
+        train(self.model, self.trainloader, epochs=1, lr_factor=config["lr_factor"])
         return self.get_parameters(config={}), len(self.trainloader.dataset), {}
 
 def main():
