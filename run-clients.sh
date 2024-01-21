@@ -2,13 +2,11 @@
 set -e
 cd "$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"/
 
-echo "Starting server"
-python server.py &
-sleep 3  # Sleep for 3s to give the server enough time to start
+RUN_NR=$(ls .exp-count | wc -w)
+echo "RUN_NR=$RUN_NR"
 
-for i in $(seq 0 1); do
-    echo "Starting client $i"
-    python client.py --node-id "$i" &
+for i in $(seq 0 $(($1 - 1))); do
+    python client.py --group_name="run-$RUN_NR" --node-id="$i" &
 done
 
 # Enable CTRL+C to stop all background processes

@@ -10,7 +10,8 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torchvision.transforms import Compose, Normalize, ToTensor
 from tqdm import tqdm
-
+import wandb
+import fire
 
 # #############################################################################
 # 1. Regular PyTorch pipeline: nn.Module, train, test, and DataLoader
@@ -94,45 +95,63 @@ def load_data(node_id):
 # 2. Federation of the pipeline with Flower
 # #############################################################################
 
-# Get node id
-parser = argparse.ArgumentParser(description="Flower")
-parser.add_argument(
-    "--node-id",
-    choices=[0, 1, 2],
-    required=True,
-    type=int,
-    help="Partition of the dataset divided into 3 iid partitions created artificially.",
-)
-node_id = parser.parse_args().node_id
-
-# Load model and data (simple CNN, CIFAR-10)
-net = Net().to(DEVICE)
-trainloader, testloader = load_data(node_id=node_id)
-
-
 # Define Flower client
 class FlowerClient(fl.client.NumPyClient):
+
+    def __init__(self, net: nn.Module, trainloader: DataLoader, testloader: DataLoader):
+        self.net = net
+        self.trainloader = trainloader
+        self.testloader = testloader
+        super().__init__()
+
     def get_parameters(self, config):
-        return [val.cpu().numpy() for _, val in net.state_dict().items()]
+        return [val.cpu().numpy() for _, val in self.net.state_dict().items()]
 
     def set_parameters(self, parameters):
-        params_dict = zip(net.state_dict().keys(), parameters)
+        params_dict = zip(self.net.state_dict().keys(), parameters)
         state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
-        net.load_state_dict(state_dict, strict=True)
+        self.net.load_state_dict(state_dict, strict=True)
 
     def fit(self, parameters, config):
         self.set_parameters(parameters)
-        train(net, trainloader, epochs=1)
-        return self.get_parameters(config={}), len(trainloader.dataset), {}
+        train(self.net, self.trainloader, epochs=1)
+        return self.get_parameters(config={}), len(self.trainloader.dataset), {}
 
     def evaluate(self, parameters, config):
         self.set_parameters(parameters)
-        loss, accuracy = test(net, testloader)
-        return loss, len(testloader.dataset), {"accuracy": accuracy}
+        loss, accuracy = test(self.net, self.testloader)
+        wandb.log({
+            "test_loss": loss,
+            "num_samples_test": len(self.testloader.dataset),
+            "test_accuracy": accuracy
+        })
+        return loss, len(self.testloader.dataset), {"accuracy": accuracy}
 
+def main():
 
-# Start Flower client
-fl.client.start_numpy_client(
-    server_address="127.0.0.1:8080",
-    client=FlowerClient(),
-)
+    net = Net().to(DEVICE)
+    trainloader, testloader = load_data(node_id=wandb.config.node_id)
+
+    fl.client.start_numpy_client(
+        server_address="127.0.0.1:8080",
+        client=FlowerClient(net=net, trainloader=trainloader, testloader=testloader),
+    )
+    wandb.finish()
+
+def setup_wandb(
+        group_name: str,
+        node_id: int,
+        project_name: str = "flower-quickstart") -> None:
+
+    wandb.init(
+        project=project_name,
+        group=group_name,
+        name=f"{group_name}-client-{node_id}",
+        config={
+            "node_id": node_id
+        }
+    )
+
+if __name__ == '__main__':
+    fire.Fire(setup_wandb)
+    main()
